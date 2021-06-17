@@ -4,6 +4,17 @@
 // $ conan install .. -s build_type=Debug -s compiler="Visual Studio" -s compiler.runtime=MDd
 // $ cmake .. -G "Visual Studio 16 2019"
 // $ cmake --build . --config Debug
+// $ cd bin
+// $ server.exe
+
+//Linux build
+// $ mkdir build
+// $ cd build
+// $ conan install .. --build=missing
+// $ cmake ..
+// $ cmake --build . --config Debug
+// $ cd bin
+// $ ./server
 
 #include <cstdlib>
 #include <iostream>
@@ -13,15 +24,35 @@
 #include <boost/thread.hpp>
 
 using boost::asio::ip::tcp;
-class Modbus
-{
-  std::vector<int> inputs;
 
-  public:
-  std::string process(char* input, size_t length);
+union u_Int
+{
+  char _char[2];
+  int _int;
+
+  void read(char* data, int position) 
+  {
+    this->_char[1] = data[position]; 
+    this->_char[0] = data[position+1];
+  }
+
+  void write(char* input, int position) 
+  {
+    input[position] = this->_char[0];
+    input[position+1] = this->_char[1];
+  }
 };
 
 const int max_length = 1024;
+
+class Modbus
+{
+  std::map<int,int> inputs;
+
+  public:
+  void process(char* input, char* response,  int& responseLength);
+  void querryHoldingRegisters(char* input, char* response, int& responseLength);
+};
 
 Modbus * s_modbus;
 
@@ -31,26 +62,48 @@ void session(socket_ptr sock)
 {
   try
   {
-    for (;;)
+    while (true)
     {
-      //TODO get length from protocol, then no need to initialize
       char data[max_length];
-      for (int i =0; i<50; i++)
-      {
-        data[i] = 0;
-      }
+
+      char response[max_length];
+      int responseLength;
 
       boost::system::error_code error;
       size_t length = sock->read_some(boost::asio::buffer(data), error);
 
-      s_modbus->process(data, length);
-      
       if (error == boost::asio::error::eof)
-        break; // Connection closed cleanly by peer.
+        break;
       else if (error)
-        throw boost::system::system_error(error); // Some other error.
+        throw boost::system::system_error(error);
 
-      boost::asio::write(*sock, boost::asio::buffer(data, length));
+      // Sync transactionId
+      response[0] = data[0];
+      response[1] = data[1];
+
+      // Protocol identifier (MODBUS)
+      response[2] = 0;
+      response[3] = 0;
+
+      s_modbus->process(data, response, responseLength);
+
+      std::cout << "\n=================================================================================================\n";
+      
+      std::cout << "Received: ";
+      for (int i =0; i<length; i++)
+      {
+        std::cout << std::setfill ('0') << std::setw (2) << std::hex << (int)data[i] << " ";
+      }
+
+      std::cout << "\nResponse: ";
+      for (int i =0; i<responseLength; i++)
+      {
+        std::cout << std::setfill ('0') << std::setw (2) << std::hex << (int)response[i] << " ";
+      }
+      
+      std::cout << "\n=================================================================================================\n";
+      
+      boost::asio::write(*sock, boost::asio::buffer(response, responseLength));
     }
   }
   catch (std::exception& e)
@@ -90,43 +143,69 @@ int main(int argc, char* argv[])
   return 0;
 }
 
-std::string Modbus::process(char* input, size_t length)
+void Modbus::process(char* input, char* response, int& responseLength)
 {
-  int transactionID[2];
-  int protocolID[2];
-  int dataLength[2];
-  int unitID;
-  int functionCode;
-  int startAdress[2];
-  int quantity[2];
+  // char transactionID[2];
+  // char protocolID[2];
+  // char dataLength[2];
+  // char unitID;
+  // char functionCode;
+  // char startAdress[2];
+  // char quantity[2];
 
-  transactionID[0] = (int)input[0];
-  transactionID[1] = (int)input[1];
-  protocolID[0] = (int)input[2];
-  protocolID[1] = (int)input[3];
-  dataLength[0] = (int)input[4];
-  dataLength[1] = (int)input[5];
-  unitID = (int)input[6];
-  functionCode = (int)input[7];
-  startAdress[0] = (int)input[8];
-  startAdress[1] = (int)input[9];
-  quantity[0] = (int)input[10];
-  quantity[1] = (int)input[11];
+  // transactionID[0]  = input[0];
+  // transactionID[1]  = input[1];
+  // protocolID[0]     = input[2];
+  // protocolID[1]     = input[3];
+  // dataLength[0]     = input[4];
+  // dataLength[1]     = input[5];
+  // unitID            = input[6];
+  // functionCode      = input[7];
+  // startAdress[0]    = input[8];
+  // startAdress[1]    = input[9];
+  // quantity[0]       = input[10];
+  // quantity[1]       = input[11];
 
-  std::cout << length << std::endl;
-  std::cout << "\n\n";
-  for (int i =0; i<12; i++)
+  switch (input[7])
   {
-    std::cout << (int)input[i] << " ";
+    case 3:
+      return this->querryHoldingRegisters(input, response, responseLength);
+    default:
+      break;
   }
 
-  std::cout << "=================================================================================================" << std::endl;
-
-  return "resposta";
-
-  for (int i =0; i<15; i++)
-  {
-    std::cout << i <<"data:" << (int)input[i] << std::endl;
-  }
-  return "a";
 }
+
+void Modbus::querryHoldingRegisters(char* input, char* response, int& responseLength)
+{
+  u_Int numberOfQueries;
+  numberOfQueries.read(input, 10); //Read byte 10 and 11 to get que quantity of queries;
+
+  u_Int dataLength;
+  dataLength._int = (numberOfQueries._int * 2) + 2;
+
+  dataLength.write(response, 5);
+
+  // Unit Identifier
+  response[6] = 0;
+
+  // Function Code
+  response[7] = 3; //This member function treats only code 3
+
+  dataLength._int = dataLength._int - 2;
+  response[8] = dataLength._char[0];
+
+  for (int i =0; i<=dataLength._int; i+=2)
+  {
+    // TODO Implement a value for each query
+    // Using allways 256
+    response[9+i] = 1;
+    response[10+i] = 0;
+  }
+
+  responseLength = 9 + dataLength._int;
+}
+
+// Baseline
+// Request 00 03 00 00 00 06 00 03 00 01 00 06 
+// Response 00 01 00 00 00 0F 00 03 0C 00 00 00 00 00 00 00 00 00 00 00 00
