@@ -1,3 +1,11 @@
+//Windows build
+// $ mkdir build
+// $ cd build
+// $ conan install .. -s build_type=Debug -s compiler="Visual Studio" -s compiler.runtime=MDd
+// $ cmake .. -G "Visual Studio 16 2019"
+// $ cmake --build . --config Debug
+
+
 #include <cstdlib>
 #include <iostream>
 #include <boost/bind.hpp>
