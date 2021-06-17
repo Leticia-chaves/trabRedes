@@ -2,7 +2,7 @@
 
 Requisitos:  
 Cmake  
-Compilador (pref gcc(Linux) ou Visual Studio 16 2019(Windows)  
+Compilador (preferencialmente gcc(Linux) ou Visual Studio 16 2019(Windows))
 Conan configurado para o compilador  
   
 Para compilar ir na pasta do projeto e:  
