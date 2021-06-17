@@ -5,7 +5,6 @@
 // $ cmake .. -G "Visual Studio 16 2019"
 // $ cmake --build . --config Debug
 
-
 #include <cstdlib>
 #include <iostream>
 #include <boost/bind.hpp>
@@ -73,6 +72,7 @@ void server(boost::asio::io_service& io_service, short port)
 
 int main(int argc, char* argv[])
 {
+
   Modbus modbus;
   s_modbus = &modbus;
 
@@ -92,6 +92,38 @@ int main(int argc, char* argv[])
 
 std::string Modbus::process(char* input, size_t length)
 {
+  int transactionID[2];
+  int protocolID[2];
+  int dataLength[2];
+  int unitID;
+  int functionCode;
+  int startAdress[2];
+  int quantity[2];
+
+  transactionID[0] = (int)input[0];
+  transactionID[1] = (int)input[1];
+  protocolID[0] = (int)input[2];
+  protocolID[1] = (int)input[3];
+  dataLength[0] = (int)input[4];
+  dataLength[1] = (int)input[5];
+  unitID = (int)input[6];
+  functionCode = (int)input[7];
+  startAdress[0] = (int)input[8];
+  startAdress[1] = (int)input[9];
+  quantity[0] = (int)input[10];
+  quantity[1] = (int)input[11];
+
+  std::cout << length << std::endl;
+  std::cout << "\n\n";
+  for (int i =0; i<12; i++)
+  {
+    std::cout << (int)input[i] << " ";
+  }
+
+  std::cout << "=================================================================================================" << std::endl;
+
+  return "resposta";
+
   for (int i =0; i<15; i++)
   {
     std::cout << i <<"data:" << (int)input[i] << std::endl;
