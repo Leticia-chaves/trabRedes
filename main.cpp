@@ -50,7 +50,7 @@ class Modbus
   std::map<int,int> inputs;
 
   public:
-  void process(char* input, char* response,  int& responseLength);
+  void process(char* input, const int inputLength, char* response, int& responseLength);
   void querryHoldingRegisters(char* input, char* response, int& responseLength);
 };
 
@@ -77,31 +77,7 @@ void session(socket_ptr sock)
       else if (error)
         throw boost::system::system_error(error);
 
-      // Sync transactionId
-      response[0] = data[0];
-      response[1] = data[1];
-
-      // Protocol identifier (MODBUS)
-      response[2] = 0;
-      response[3] = 0;
-
-      s_modbus->process(data, response, responseLength);
-
-      std::cout << "\n=================================================================================================\n";
-      
-      std::cout << "Received: ";
-      for (int i =0; i<length; i++)
-      {
-        std::cout << std::setfill ('0') << std::setw (2) << std::hex << (int)data[i] << " ";
-      }
-
-      std::cout << "\nResponse: ";
-      for (int i =0; i<responseLength; i++)
-      {
-        std::cout << std::setfill ('0') << std::setw (2) << std::hex << (int)response[i] << " ";
-      }
-      
-      std::cout << "\n=================================================================================================\n";
+      s_modbus->process(data, length, response, responseLength);
       
       boost::asio::write(*sock, boost::asio::buffer(response, responseLength));
     }
@@ -143,7 +119,7 @@ int main(int argc, char* argv[])
   return 0;
 }
 
-void Modbus::process(char* input, char* response, int& responseLength)
+void Modbus::process(char* input, const int inputLength, char* response, int& responseLength)
 {
   // char transactionID[2];
   // char protocolID[2];
@@ -174,6 +150,29 @@ void Modbus::process(char* input, char* response, int& responseLength)
       break;
   }
 
+  // Sync transactionId
+  response[0] = input[0];
+  response[1] = input[1];
+
+  // Protocol identifier (MODBUS)
+  response[2] = 0;
+  response[3] = 0;
+
+  std::cout << "\n=================================================================================================\n";
+  
+  std::cout << "Received: ";
+  for (int i =0; i<inputLength; i++)
+  {
+    std::cout << std::setfill ('0') << std::setw (2) << std::hex << (int)input[i] << " ";
+  }
+
+  std::cout << "\nResponse: ";
+  for (int i =0; i<responseLength; i++)
+  {
+    std::cout << std::setfill ('0') << std::setw (2) << std::hex << (int)response[i] << " ";
+  }
+  
+  std::cout << "\n=================================================================================================\n";
 }
 
 void Modbus::querryHoldingRegisters(char* input, char* response, int& responseLength)
@@ -209,3 +208,4 @@ void Modbus::querryHoldingRegisters(char* input, char* response, int& responseLe
 // Baseline
 // Request 00 03 00 00 00 06 00 03 00 01 00 06 
 // Response 00 01 00 00 00 0F 00 03 0C 00 00 00 00 00 00 00 00 00 00 00 00
+// https://rapidscada.net/modbus/ModbusParser.aspx/
