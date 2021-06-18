@@ -109,7 +109,7 @@ int main(int argc, char* argv[])
   {
     boost::asio::io_service io_service;
 
-    server(io_service, std::atoi("9001"));
+    server(io_service, std::atoi("9002"));
   }
   catch (std::exception& e)
   {
@@ -145,7 +145,7 @@ void Modbus::process(char* input, const int inputLength, char* response, int& re
   switch (input[7])
   {
     case 3:
-      return this->querryHoldingRegisters(input, response, responseLength);
+      this->querryHoldingRegisters(input, response, responseLength);
     default:
       break;
   }
@@ -163,13 +163,13 @@ void Modbus::process(char* input, const int inputLength, char* response, int& re
   std::cout << "Received: ";
   for (int i =0; i<inputLength; i++)
   {
-    std::cout << std::setfill ('0') << std::setw (2) << std::hex << (int)input[i] << " ";
+    std::cout  << (int)input[i] << " ";
   }
 
   std::cout << "\nResponse: ";
   for (int i =0; i<responseLength; i++)
   {
-    std::cout << std::setfill ('0') << std::setw (2) << std::hex << (int)response[i] << " ";
+    std::cout << (int)response[i] << " ";
   }
   
   std::cout << "\n=================================================================================================\n";
