@@ -25,6 +25,7 @@
 
 using boost::asio::ip::tcp;
 
+// TODO handle floats(1)
 union u_Int
 {
   char _char[2];
@@ -98,32 +99,36 @@ int main(int argc, char* argv[])
 
 auto Modbus_service::process(char* input, const size_t inputLength, char* response, size_t& responseLength) ->void
 {
-  // char transactionID[2];
-  // char protocolID[2];
-  // char dataLength[2];
-  // char unitID;
-  // char functionCode;
-  // char startAdress[2];
-  // char quantity[2];
+  /* * * * * * * * * * * * * * * * 
+   * char transactionID[2];
+   * char protocolID[2];
+   * char dataLength[2];
+   * char unitID;
+   * char functionCode;
+   * char startAdress[2];
+   * char quantity[2];
+   *
+   * transactionID[0]  = input[0];
+   * transactionID[1]  = input[1];
+   * protocolID[0]     = input[2];
+   * protocolID[1]     = input[3];
+   * dataLength[0]     = input[4];
+   * dataLength[1]     = input[5];
+   * unitID            = input[6];
+   * functionCode      = input[7];
+   * startAdress[0]    = input[8];
+   * startAdress[1]    = input[9];
+   * quantity[0]       = input[10];
+   * quantity[1]       = input[11];
+   * * * * * * * * * * * * * * * * */
 
-  // transactionID[0]  = input[0];
-  // transactionID[1]  = input[1];
-  // protocolID[0]     = input[2];
-  // protocolID[1]     = input[3];
-  // dataLength[0]     = input[4];
-  // dataLength[1]     = input[5];
-  // unitID            = input[6];
-  // functionCode      = input[7];
-  // startAdress[0]    = input[8];
-  // startAdress[1]    = input[9];
-  // quantity[0]       = input[10];
-  // quantity[1]       = input[11];
-
+  // The 8`th bit select the function
   switch (input[7])
   {
     case 3:
       this->querryHoldingRegisters(input, response, responseLength);
     default:
+      //Can`t handle any other function
       break;
   }
 
@@ -140,18 +145,20 @@ auto Modbus_service::process(char* input, const size_t inputLength, char* respon
   std::cout << "Received: ";
   for (int i =0; i<inputLength; i++)
   {
-    std::cout  << (int)input[i] << " ";
+    std::cout  << static_cast<int>(input[i]) << " ";
   }
 
   std::cout << "\nResponse: ";
   for (int i =0; i<responseLength; i++)
   {
-    std::cout << (int)response[i] << " ";
+    std::cout << static_cast<int>(response[i]) << " ";
   }
   
-  std::cout << "\n=================================================================================================\n";
+  std::cout << "\n=================================================================================================" << std::endl;
 }
 
+// TODO handle floats(2)
+// TODO use data members values
 auto Modbus_service::querryHoldingRegisters(char* input, char* response, size_t& responseLength) ->void
 {
   u_Int numberOfQueries;
@@ -200,26 +207,36 @@ Tcp_server::Tcp_server(std::shared_ptr<Tcp_service_interface> service, int port)
 auto Tcp_server::handle_session(std::shared_ptr<tcp::socket> sock) noexcept ->void 
 {
   std::cout << "Session created" << std::endl;
-  try //Catch exception inside the session
+
+  char data[max_length];
+  size_t length;
+
+  char response[max_length];
+  size_t responseLength;
+
+  boost::system::error_code error;
+  
+  //Catch exception inside the session thread
+  try
   {
+    // Handle messages until the session is closed
     while (true)
     {
-      char data[max_length];
-      size_t length;
 
-      char response[max_length];
-      size_t responseLength;
-
-      boost::system::error_code error;
+      // Read a message
       length = sock->read_some(boost::asio::buffer(data), error);
 
+      // Handle errors and disconections============
       if (error == boost::asio::error::eof)
         break;
       else if (error)
         throw boost::system::system_error(error);
+      //============================================
 
+      // Call the modbus service
       m_service->process(data, length, response, responseLength);
       
+      // Send the response back
       boost::asio::write(*sock, boost::asio::buffer(response, responseLength));
     }
   }
