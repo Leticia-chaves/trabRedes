@@ -10,7 +10,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 # add_subdirectory(lib1_dir)
 
-add_executable(server main.cpp)
+add_executable(server server.cpp)
 conan_target_link_libraries(server)
+
+add_executable(client client.cpp)
+conan_target_link_libraries(client)
 # target_link_libraries(executable lib1 lib2)
 

@@ -45,81 +45,58 @@ union u_Int
 
 const int max_length = 1024;
 
-class Modbus
+/*
+ * All services implemented througth this TCP server should inherith from this interface.
+ * Each time the tcp server receive a message, it calls it's service method "process" on a new thread.
+ */ 
+class Tcp_service_interface
 {
-  std::map<int,int> inputs;
-
   public:
-  void process(char* input, const int inputLength, char* response, int& responseLength);
-  void querryHoldingRegisters(char* input, char* response, int& responseLength);
+    virtual auto process(char* input, const size_t inputLenght, char* response, size_t& responseLength) -> void = 0;
 };
 
-Modbus * s_modbus;
-
-typedef boost::shared_ptr<tcp::socket> socket_ptr;
-
-void session(socket_ptr sock)
+// TODO services must be threadsafe
+class Modbus_service : public Tcp_service_interface
 {
-  try
-  {
-    while (true)
-    {
-      char data[max_length];
+  std::map<int,int> m_inputs;
 
-      char response[max_length];
-      int responseLength;
+  auto querryHoldingRegisters(char* input, char* response, size_t& responseLength) ->void;
 
-      boost::system::error_code error;
-      size_t length = sock->read_some(boost::asio::buffer(data), error);
+  public:
+    virtual auto process(char* input, const size_t inputLength, char* response, size_t& responseLength) -> void ;
+};
 
-      if (error == boost::asio::error::eof)
-        break;
-      else if (error)
-        throw boost::system::system_error(error);
-
-      s_modbus->process(data, length, response, responseLength);
-      
-      boost::asio::write(*sock, boost::asio::buffer(response, responseLength));
-    }
-  }
-  catch (std::exception& e)
-  {
-    std::cerr << "Exception in thread: " << e.what() << "\n";
-  }
-}
-
-void server(boost::asio::io_service& io_service, short port)
+class Tcp_server
 {
-  tcp::acceptor a(io_service, tcp::endpoint(tcp::v4(), port));
-  for (;;)
-  {
-    socket_ptr sock(new tcp::socket(io_service));
-    a.accept(*sock);
-    boost::thread t(boost::bind(session, sock));
-  }
-}
+  boost::asio::io_service m_io_service; //Contain platform specific code to handle i/o context (socket readines, file descriptors...)
+  std::shared_ptr<Tcp_service_interface> m_service;
+
+  auto handle_session(std::shared_ptr<tcp::socket> sock) noexcept ->void;
+
+  public:
+    Tcp_server(std::shared_ptr<Tcp_service_interface> service, int port);
+};
 
 int main(int argc, char* argv[])
 {
-
-  Modbus modbus;
-  s_modbus = &modbus;
-
+  const int port = 9001;
   try
   {
-    boost::asio::io_service io_service;
+    std::shared_ptr<Tcp_service_interface> modbus_server = std::make_shared<Modbus_service>();
 
-    server(io_service, std::atoi("9002"));
+    std::cout << "Server starting on port " << port << std::endl;
+    Tcp_server tcp_server(modbus_server, port);
   }
   catch (std::exception& e)
   {
     std::cerr << "Exception: " << e.what() << "\n";
+    return 1;
   }
 
   return 0;
 }
 
-void Modbus::process(char* input, const int inputLength, char* response, int& responseLength)
+auto Modbus_service::process(char* input, const size_t inputLength, char* response, size_t& responseLength) ->void
 {
   // char transactionID[2];
   // char protocolID[2];
@@ -175,7 +152,7 @@ void Modbus::process(char* input, const int inputLength, char* response, int& re
   std::cout << "\n=================================================================================================\n";
 }
 
-void Modbus::querryHoldingRegisters(char* input, char* response, int& responseLength)
+auto Modbus_service::querryHoldingRegisters(char* input, char* response, size_t& responseLength) ->void
 {
   u_Int numberOfQueries;
   numberOfQueries.read(input, 10); //Read byte 10 and 11 to get que quantity of queries;
@@ -203,6 +180,53 @@ void Modbus::querryHoldingRegisters(char* input, char* response, int& responseLe
   }
 
   responseLength = 9 + dataLength._int;
+}
+
+Tcp_server::Tcp_server(std::shared_ptr<Tcp_service_interface> service, int port)
+  :m_service (service)
+{
+  tcp::acceptor acceptor(m_io_service, tcp::endpoint(tcp::v4(), port)); //When a message arives in the socket, the acceptor object check if the message follow TCP protocol, then it generate a session.
+
+  while( true )
+  {
+    std::shared_ptr<tcp::socket> sock(new tcp::socket(m_io_service)); //Handle socket
+    acceptor.accept(*sock); //Wait for a correct socket message
+
+    std::thread thread([this, sock](){this->handle_session(sock);}); //Spawn a thread to handle the tcp session
+    thread.detach();
+  }
+}
+
+auto Tcp_server::handle_session(std::shared_ptr<tcp::socket> sock) noexcept ->void 
+{
+  std::cout << "Session created" << std::endl;
+  try //Catch exception inside the session
+  {
+    while (true)
+    {
+      char data[max_length];
+      size_t length;
+
+      char response[max_length];
+      size_t responseLength;
+
+      boost::system::error_code error;
+      length = sock->read_some(boost::asio::buffer(data), error);
+
+      if (error == boost::asio::error::eof)
+        break;
+      else if (error)
+        throw boost::system::system_error(error);
+
+      m_service->process(data, length, response, responseLength);
+      
+      boost::asio::write(*sock, boost::asio::buffer(response, responseLength));
+    }
+  }
+  catch (std::exception& e)
+  {
+    std::cerr << "Exception in thread: " << e.what() << "\n";
+  }
 }
 
 // Baseline
