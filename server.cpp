@@ -22,14 +22,16 @@
 #include <boost/smart_ptr.hpp>
 #include <boost/asio.hpp>
 #include <boost/thread.hpp>
+#include <bitset>
+
 
 using boost::asio::ip::tcp;
 
-// TODO handle floats(1)
 union u_Int
 {
   char _char[2];
-  int _int;
+  unsigned int _int;
+  u_Int() {this->_int = 0;}
 
   void read(char* data, int position) 
   {
@@ -39,10 +41,15 @@ union u_Int
 
   void write(char* input, int position) 
   {
-    input[position] = this->_char[0];
-    input[position+1] = this->_char[1];
+    input[position] = this->_char[1];
+    input[position+1] = this->_char[0];
   }
 };
+
+// TODO handle floats(1)
+
+
+
 
 const int max_length = 1024;
 
@@ -140,15 +147,15 @@ auto Modbus_service::process(char* input, const size_t inputLength, char* respon
   response[2] = 0;
   response[3] = 0;
 
-  std::cout << "\n=================================================================================================\n";
+std::cout << "\n=================================================================================================\n";
   
-  std::cout << "Received: ";
+  std::cout << "Received: " << inputLength << std::endl;
   for (int i =0; i<inputLength; i++)
   {
     std::cout  << static_cast<int>(input[i]) << " ";
   }
 
-  std::cout << "\nResponse: ";
+  std::cout << "\nResponse: "<< responseLength << std::endl;
   for (int i =0; i<responseLength; i++)
   {
     std::cout << static_cast<int>(response[i]) << " ";
@@ -157,17 +164,22 @@ auto Modbus_service::process(char* input, const size_t inputLength, char* respon
   std::cout << "\n=================================================================================================" << std::endl;
 }
 
+
 // TODO handle floats(2)
 // TODO use data members values
 auto Modbus_service::querryHoldingRegisters(char* input, char* response, size_t& responseLength) ->void
 {
+  u_Int startAddres;
+  startAddres.read(input, 8); //Read byte 10 and 11 to get que quantity of queries;
+
   u_Int numberOfQueries;
   numberOfQueries.read(input, 10); //Read byte 10 and 11 to get que quantity of queries;
 
-  u_Int dataLength;
-  dataLength._int = (numberOfQueries._int * 2) + 2;
+  std::cout << "N queries: " << numberOfQueries._int <<std::endl;
 
-  dataLength.write(response, 5);
+  u_Int dataLength;
+  dataLength._int = (numberOfQueries._int * 2) + 3;
+  dataLength.write(response, 4);
 
   // Unit Identifier
   response[6] = 0;
@@ -175,16 +187,29 @@ auto Modbus_service::querryHoldingRegisters(char* input, char* response, size_t&
   // Function Code
   response[7] = 3; //This member function treats only code 3
 
-  dataLength._int = dataLength._int - 2;
+  dataLength._int = dataLength._int - 3;
   response[8] = dataLength._char[0];
 
-  for (int i =0; i<=dataLength._int; i+=2)
-  {
-    // TODO Implement a value for each query
-    // Using allways 256
-    response[9+i] = 1;
-    response[10+i] = 0;
-  }
+int j=0;
+for (int i =0; i<=dataLength._int; i+=2) 
+{ // TODO Implement a value for each query 
+// Using allways 256 
+u_Int respInt; 
+int register_pos = startAddres._int + j++;
+if (m_inputs.find(register_pos) != m_inputs.end())
+{
+  respInt._int= m_inputs.at(register_pos); 
+}
+else{
+  m_inputs[register_pos] = 22;
+  respInt._int = 22;
+}
+
+
+
+response[9+i] = respInt._char[0]; 
+response[10+i] = respInt._char[1]; 
+}
 
   responseLength = 9 + dataLength._int;
 }
@@ -249,4 +274,4 @@ auto Tcp_server::handle_session(std::shared_ptr<tcp::socket> sock) noexcept ->vo
 // Baseline
 // Request 00 03 00 00 00 06 00 03 00 01 00 06 
 // Response 00 01 00 00 00 0F 00 03 0C 00 00 00 00 00 00 00 00 00 00 00 00
-// https://rapidscada.net/modbus/ModbusParser.aspx/
+// http://rapidscada.net/modbus/ModbusParser.aspx
