@@ -26,7 +26,7 @@
     $ ./server
 
 ## Integrantes do grupo:
-    $Giuliano Floriani
-    $Letícia Chaves
-    $Lucas Feldens
-    $Mariele Mendes
+    Giuliano Floriani
+    Letícia Chaves
+    Lucas Feldens
+    Mariele Mendes
