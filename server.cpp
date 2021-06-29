@@ -22,8 +22,8 @@
 #include <boost/smart_ptr.hpp>
 #include <boost/asio.hpp>
 #include <boost/thread.hpp>
+#include <windows.h>
 #include <bitset>
-
 
 using boost::asio::ip::tcp;
 
@@ -46,12 +46,42 @@ union u_Int
   }
 };
 
-// TODO handle floats(1)
-
-
-
+union u_Float
+{
+  float _float =0;
+  char _char[4];
+};
 
 const int max_length = 1024;
+
+//Função para retornar o uso da cpu
+//https://stackoverflow.com/questions/23143693/retrieving-cpu-load-percent-total-in-windows-with-c
+static float CalculateCPULoad(unsigned long long idleTicks, unsigned long long totalTicks)
+{
+   static unsigned long long _previousTotalTicks = 0;
+   static unsigned long long _previousIdleTicks = 0;
+
+   unsigned long long totalTicksSinceLastTime = totalTicks-_previousTotalTicks;
+   unsigned long long idleTicksSinceLastTime  = idleTicks-_previousIdleTicks;
+
+   float ret = 1.0f-((totalTicksSinceLastTime > 0) ? ((float)idleTicksSinceLastTime)/totalTicksSinceLastTime : 0);
+
+   _previousTotalTicks = totalTicks;
+   _previousIdleTicks  = idleTicks;
+   return ret;
+}
+
+static unsigned long long FileTimeToInt64(const FILETIME & ft) {return (((unsigned long long)(ft.dwHighDateTime))<<32)|((unsigned long long)ft.dwLowDateTime);}
+
+u_Float GetCPULoad()
+{
+   FILETIME idleTime, kernelTime, userTime;
+   float aux = GetSystemTimes(&idleTime, &kernelTime, &userTime) ? CalculateCPULoad(FileTimeToInt64(idleTime), FileTimeToInt64(kernelTime)+FileTimeToInt64(userTime)) : -1.0f;
+   u_Float res;
+   res._float = aux*100;
+   return res;
+}
+
 
 /*
  * All services implemented througth this TCP server should inherith from this interface.
@@ -66,7 +96,7 @@ class Tcp_service_interface
 // TODO services must be threadsafe
 class Modbus_service : public Tcp_service_interface
 {
-  std::map<int,int> m_inputs;
+  std::map<int,float> m_inputs;
 
   auto querryHoldingRegisters(char* input, char* response, size_t& responseLength) ->void;
 
@@ -91,7 +121,6 @@ int main(int argc, char* argv[])
   try
   {
     std::shared_ptr<Tcp_service_interface> modbus_server = std::make_shared<Modbus_service>();
-
     std::cout << "Server starting on port " << port << std::endl;
     Tcp_server tcp_server(modbus_server, port);
   }
@@ -175,8 +204,6 @@ auto Modbus_service::querryHoldingRegisters(char* input, char* response, size_t&
   u_Int numberOfQueries;
   numberOfQueries.read(input, 10); //Read byte 10 and 11 to get que quantity of queries;
 
-  std::cout << "N queries: " << numberOfQueries._int <<std::endl;
-
   u_Int dataLength;
   dataLength._int = (numberOfQueries._int * 2) + 3;
   dataLength.write(response, 4);
@@ -189,27 +216,15 @@ auto Modbus_service::querryHoldingRegisters(char* input, char* response, size_t&
 
   dataLength._int = dataLength._int - 3;
   response[8] = dataLength._char[0];
-
-int j=0;
-for (int i =0; i<=dataLength._int; i+=2) 
-{ // TODO Implement a value for each query 
-// Using allways 256 
-u_Int respInt; 
-int register_pos = startAddres._int + j++;
-if (m_inputs.find(register_pos) != m_inputs.end())
-{
-  respInt._int= m_inputs.at(register_pos); 
-}
-else{
-  m_inputs[register_pos] = 22;
-  respInt._int = 22;
-}
-
-
-
-response[9+i] = respInt._char[0]; 
-response[10+i] = respInt._char[1]; 
-}
+  //std::cout << "DATA LENGHT: " << dataLength._int  << std::endl;
+  
+  //Resposta da cpuLoad
+  u_Float CPULoad = GetCPULoad();
+  std::cout << "CPU LOAD: " << CPULoad._float  << std::endl;
+  response[11] = CPULoad._char[3];
+  response[12] = CPULoad._char[2];
+  response[9]  = CPULoad._char[1];
+  response[10] = CPULoad._char[0];
 
   responseLength = 9 + dataLength._int;
 }
