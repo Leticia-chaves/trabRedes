@@ -1,5 +1,4 @@
 #include <iostream>
-#include <boost/array.hpp>
 #include <boost/asio.hpp>
 
 using boost::asio::ip::address;
@@ -7,9 +6,8 @@ using boost::asio::ip::tcp;
 
 union u_Int
 {
+  unsigned int _int = 0;
   char _char[2];
-  unsigned int _int;
-  u_Int() {this->_int = 0;}
 
   void read(char* data, int position) 
   {
@@ -21,6 +19,35 @@ union u_Int
   {
     input[position] = this->_char[1];
     input[position+1] = this->_char[0];
+  }
+};
+
+union u_Float
+{
+  float _float = 0;
+  char _char[4];
+
+  void write(char* input, int position) 
+  {
+    input[position]   = this->_char[1];
+    input[position+1] = this->_char[0];
+    input[position+2] = this->_char[3];
+    input[position+3] = this->_char[2];
+  }
+
+  void read(char* input, int position)
+  {
+    this->_char[0] = input[position+1];
+    this->_char[1] = input[position];
+    this->_char[2] = input[position+3];
+    this->_char[3] = input[position+2];
+  }
+
+  void print()
+  {
+    std::cout << "Float values " 
+    << (int)this->_char[0] << " " << (int)this->_char[1] << " " 
+    << (int)this->_char[2] << " " << (int)this->_char[3] << std::endl;
   }
 };
 
@@ -71,12 +98,6 @@ Tcp_client::Tcp_client(std::shared_ptr<Tcp_client_interface> client, const std::
   try{
     boost::system::error_code ec; // Boost asio tends not to use c++ exceptions
 
-    // using namespace boost::asio;
-    // io_service service;
-    // ip::tcp::endpoint ep( ip::address::from_string("192.168.0.11"), 9001);
-    // ip::tcp::socket sock(service);
-    // sock.connect(ep);
-
     tcp::socket socket(m_io_service);
 
     address ip_address = address::from_string(ipAddress, ec);
@@ -99,10 +120,7 @@ Tcp_client::Tcp_client(std::shared_ptr<Tcp_client_interface> client, const std::
       
       this->m_client->query(query, query_length);
 
-      // boost::array<char, 128> buf;
-      // std::copy(query.begin(),query.end(),buf.begin());
       socket.write_some(boost::asio::buffer(query, query_length), ec);
-      // sock.write_some(buffer("abcde"));
       if (ec)
         throw boost::system::system_error(ec);
 
@@ -143,9 +161,10 @@ auto Modbus_client::query(char* query, size_t& query_length) ->void
   } while (0 > register_start._int || register_start._int > 999);
 
   do {
-    std::cout << "How many to read?" << std::endl;
+    std::cout << "How many floats to read?" << std::endl;
     std::cin >> number_of_registers._int;
   } while (0 > number_of_registers._int || number_of_registers._int > 10);
+  number_of_registers._int *= 2;
 
   // transactionID[0]  = input[0];
   // transactionID[1]  = input[1];
@@ -218,11 +237,19 @@ auto Modbus_client::read_response(char* query, const size_t query_length, char* 
   u_Int number_of_registers;
   number_of_registers.read(query, 10); //The number of registers read was writen in the query position 10
 
-  for (size_t i=0; i < number_of_registers._int; ++i) //The first register value is writen in position 10 of the response.
+  //We are expecting floats so
+  if ((number_of_registers._int % 2) == 1) 
   {
-    u_Int register_value;
-    register_value.read(response, 10);
+    std::cerr << "Expecting float, should have been an even number of registers in the response. Got " << number_of_registers._int << std::endl;
+    return; //TODO Just read the int?
+  }
+  number_of_registers._int /= 2;
 
-    std::cout << "Register " << register_start._int + i << " has value: " << (int)register_value._int << std::endl;
+  for (size_t i=0; i < number_of_registers._int; i+=4) //The first register value is writen in position 10 of the response.
+  {
+    u_Float register_value;
+    register_value.read(response, 9);
+
+    std::cout << "Register " << register_start._int + i << " has value: " << (float)register_value._float << std::endl;
   }
 }

@@ -18,20 +18,22 @@
 
 #include <cstdlib>
 #include <iostream>
-#include <boost/bind.hpp>
-#include <boost/smart_ptr.hpp>
 #include <boost/asio.hpp>
-#include <boost/thread.hpp>
-#include <windows.h>
-#include <bitset>
+
+#ifdef _WIN32
+  #include <windows.h>
+#elif __linux__
+  #include <fstream>
+#else
+  Not supported platform
+#endif
 
 using boost::asio::ip::tcp;
 
 union u_Int
 {
+  unsigned int _int = 0;
   char _char[2];
-  unsigned int _int;
-  u_Int() {this->_int = 0;}
 
   void read(char* data, int position) 
   {
@@ -41,47 +43,108 @@ union u_Int
 
   void write(char* input, int position) 
   {
-    input[position] = this->_char[1];
+    input[position]   = this->_char[1];
     input[position+1] = this->_char[0];
   }
 };
 
 union u_Float
 {
-  float _float =0;
+  float _float = 0;
   char _char[4];
+
+  void write(char* input, int position) 
+  {
+    input[position]   = this->_char[1];
+    input[position+1] = this->_char[0];
+    input[position+2] = this->_char[3];
+    input[position+3] = this->_char[2];
+  }
+
+  void read(char* input, int position)
+  {
+    this->_char[1] = input[position];
+    this->_char[0] = input[position+1];
+    this->_char[3] = input[position+2];
+    this->_char[2] = input[position+3];
+  }
+
+  void print()
+  {
+    std::cout << "Float values " 
+    << (int)this->_char[0] << " " << (int)this->_char[1] << " " 
+    << (int)this->_char[2] << " " << (int)this->_char[3] << std::endl;
+  }
 };
 
 const int max_length = 1024;
 
-//Função para retornar o uso da cpu
-//https://stackoverflow.com/questions/23143693/retrieving-cpu-load-percent-total-in-windows-with-c
-static float CalculateCPULoad(unsigned long long idleTicks, unsigned long long totalTicks)
-{
-   static unsigned long long _previousTotalTicks = 0;
-   static unsigned long long _previousIdleTicks = 0;
+#ifdef _WIN32
+  //Função para retornar o uso da cpu
+  //https://stackoverflow.com/questions/23143693/retrieving-cpu-load-percent-total-in-windows-with-c
+  static float CalculateCPULoad(unsigned long long idleTicks, unsigned long long totalTicks)
+  {
+    static unsigned long long _previousTotalTicks = 0;
+    static unsigned long long _previousIdleTicks = 0;
 
-   unsigned long long totalTicksSinceLastTime = totalTicks-_previousTotalTicks;
-   unsigned long long idleTicksSinceLastTime  = idleTicks-_previousIdleTicks;
+    unsigned long long totalTicksSinceLastTime = totalTicks-_previousTotalTicks;
+    unsigned long long idleTicksSinceLastTime  = idleTicks-_previousIdleTicks;
 
-   float ret = 1.0f-((totalTicksSinceLastTime > 0) ? ((float)idleTicksSinceLastTime)/totalTicksSinceLastTime : 0);
+    float ret = 1.0f-((totalTicksSinceLastTime > 0) ? ((float)idleTicksSinceLastTime)/totalTicksSinceLastTime : 0);
 
-   _previousTotalTicks = totalTicks;
-   _previousIdleTicks  = idleTicks;
-   return ret;
-}
+    _previousTotalTicks = totalTicks;
+    _previousIdleTicks  = idleTicks;
+    return ret;
+  }
 
-static unsigned long long FileTimeToInt64(const FILETIME & ft) {return (((unsigned long long)(ft.dwHighDateTime))<<32)|((unsigned long long)ft.dwLowDateTime);}
+  static unsigned long long FileTimeToInt64(const FILETIME & ft) {return (((unsigned long long)(ft.dwHighDateTime))<<32)|((unsigned long long)ft.dwLowDateTime);}
 
-u_Float GetCPULoad()
-{
-   FILETIME idleTime, kernelTime, userTime;
-   float aux = GetSystemTimes(&idleTime, &kernelTime, &userTime) ? CalculateCPULoad(FileTimeToInt64(idleTime), FileTimeToInt64(kernelTime)+FileTimeToInt64(userTime)) : -1.0f;
-   u_Float res;
-   res._float = aux*100;
-   return res;
-}
+  u_Float GetCPULoad()
+  {
+    FILETIME idleTime, kernelTime, userTime;
+    float aux = GetSystemTimes(&idleTime, &kernelTime, &userTime) ? CalculateCPULoad(FileTimeToInt64(idleTime), FileTimeToInt64(kernelTime)+FileTimeToInt64(userTime)) : -1.0f;
+    u_Float res;
+    res._float = aux*100;
+    return res;
+  }
 
+#elif __linux__
+  auto getWorkingData() ->std::tuple<int, int>
+  {
+    int working_jiffies = 0;
+    int total_jiffies = 0;
+    std::ifstream file ("/proc/stat"); //Open processor stats file descriptor (on linux "Everything is a file)
+    if (file.is_open()) {
+        int buf;
+        file.seekg(4);
+        for (size_t i = 0; i <= 3; ++i)
+        {
+          file >> buf;
+          working_jiffies += buf;
+          total_jiffies += buf;
+        }
+        for (size_t i = 0; i <= 4; ++i)
+        {
+          file >> buf;
+          total_jiffies += buf;
+        }
+        file.close();
+    }
+
+    return {working_jiffies, total_jiffies};
+  }
+
+  auto GetCPULoad() ->u_Float
+  {
+    auto [working_jiffies, total_jiffies] = getWorkingData();
+    //TODO Getting cpu usage since bootup, in order to get current cpu usage, should be making 2 calls and use only de difference
+
+    u_Float cpu_usage;
+    cpu_usage._float = working_jiffies * 100;
+    cpu_usage._float /= total_jiffies;
+    return cpu_usage;
+  }
+#endif
 
 /*
  * All services implemented througth this TCP server should inherith from this interface.
@@ -194,8 +257,7 @@ std::cout << "\n================================================================
 }
 
 
-// TODO handle floats(2)
-// TODO use data members values
+// TODO use data members values // or refactor to use work class interface instead of static function
 auto Modbus_service::querryHoldingRegisters(char* input, char* response, size_t& responseLength) ->void
 {
   u_Int startAddres;
@@ -204,6 +266,7 @@ auto Modbus_service::querryHoldingRegisters(char* input, char* response, size_t&
   u_Int numberOfQueries;
   numberOfQueries.read(input, 10); //Read byte 10 and 11 to get que quantity of queries;
 
+  // Data length from this point forward
   u_Int dataLength;
   dataLength._int = (numberOfQueries._int * 2) + 3;
   dataLength.write(response, 4);
@@ -214,17 +277,14 @@ auto Modbus_service::querryHoldingRegisters(char* input, char* response, size_t&
   // Function Code
   response[7] = 3; //This member function treats only code 3
 
+  // Data length from this point forward
   dataLength._int = dataLength._int - 3;
   response[8] = dataLength._char[0];
-  //std::cout << "DATA LENGHT: " << dataLength._int  << std::endl;
   
   //Resposta da cpuLoad
   u_Float CPULoad = GetCPULoad();
   std::cout << "CPU LOAD: " << CPULoad._float  << std::endl;
-  response[11] = CPULoad._char[3];
-  response[12] = CPULoad._char[2];
-  response[9]  = CPULoad._char[1];
-  response[10] = CPULoad._char[0];
+  CPULoad.write(response, 9);
 
   responseLength = 9 + dataLength._int;
 }
