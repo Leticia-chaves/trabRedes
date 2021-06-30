@@ -63,10 +63,10 @@ union u_Float
 
   void read(char* input, int position)
   {
-    this->_char[1] = input[position];
     this->_char[0] = input[position+1];
-    this->_char[3] = input[position+2];
+    this->_char[1] = input[position];
     this->_char[2] = input[position+3];
+    this->_char[3] = input[position+2];
   }
 
   void print()
