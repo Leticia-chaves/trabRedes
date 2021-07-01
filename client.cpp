@@ -60,7 +60,7 @@ class Tcp_client_interface
 
 class Modbus_client : public Tcp_client_interface
 {
-  u_Int m_message_number = 0;
+  u_Int m_message_number;
 
   public:
     virtual auto query(char* query, size_t& query_length) ->void override;
