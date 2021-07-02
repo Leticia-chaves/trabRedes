@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.10)
 project(Redes)
 
 # https://cmake.org/cmake/help/latest/prop_tgt/CXX_STANDARD.html

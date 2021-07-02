@@ -82,7 +82,7 @@ int main(int argc, char* argv[])
   {
     std::shared_ptr<Tcp_client_interface> modbus_client = std::make_shared<Modbus_client>();
 
-    Tcp_client(modbus_client, "192.168.0.11", 9001);
+    Tcp_client(modbus_client, "192.168.0.18", 9001);
   }
   catch (std::exception& e)
   {
